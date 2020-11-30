@@ -1,0 +1,71 @@
+<?xml version="1.0"?>
+
+<launch>
+<!-- Here we specify arguments, useful when you want to "parametrize" launch file-->
+<!-- RVIZ config file name-->
+  <arg name="file_name" default="navigation_single"/>
+<!-- Turtlebot3 model args and params setting -->
+  <arg name="model" default="$(env TURTLEBOT3_MODEL)"/> <!--Always remember to "export TURTLEBOT3_MODEL=burger"-->
+  <arg name="urdf_file" default="$(find xacro)/xacro --inorder '$(find turtlebot3_description)/urdf/turtlebot3_$(arg model).urdf.xacro'" />
+  <param name="robot_description" command="$(arg urdf_file)" />
+
+<!-- Manually set the tf between /map and /odom-->
+  <node pkg="tf" type="static_transform_publisher" name="static_transform_publisher" args="2.0 7.0 0.0 0.0 0.0 0.0 map odom 100"/>
+<!-- Load the static map in order to have information about static obstacles at least for global navigation -->
+  <include file="$(find turtlebot3_rviz_navigation)/launch/launch_map.launch"/>
+
+<!-- Fake node, publishes tf and needed publishers (e.g. joint_state)-->
+  <!-- <node pkg="joint_state_publisher" type="joint_state_publisher" name="joint_state_publisher"/>-->
+    <param name="tb3_model" value="$(arg model)"/>
+    <node pkg="turtlebot3_fake" type="turtlebot3_fake_node" name="turtlebot3_fake_node" output="screen"/>
+  <!-- Publish robot state -->
+    <node pkg="robot_state_publisher" type="robot_state_publisher" name="robot_state_publisher">
+      <param name="publish_frequency" type="double" value="50.0" />
+    </node>
+    
+<!-- A* is the default global planner in move_base?-->
+
+<!-- Launch move_base node -->
+<!--<arg name="cmd_vel_topic" default="/cmd_vel" />
+  <arg name="odom_topic" default="/odom" />-->
+
+<arg name="cmd_vel_topic" default="/cmd_vel" />
+  <arg name="odom_topic" default="odom" />
+
+  <node pkg="move_base" type="move_base" respawn="false" name="move_base" output="screen">
+  <!-- Load params files -->
+    <!-- <rosparam file="$(find turtlebot3_rviz_navigation)/launch/params/base_local_planner_params_rviz_nav.yaml" command="load"/> -->
+    <rosparam file="$(find turtlebot3_rviz_navigation)/launch/params/costmap_common_params.yaml" command="load" ns="global_costmap"/>
+    <rosparam file="$(find turtlebot3_rviz_navigation)/launch/params/costmap_common_params.yaml" command="load" ns="local_costmap"/>
+
+    <rosparam file="$(find turtlebot3_rviz_navigation)/launch/params/local_costmap_params.yaml" command="load"/>
+    <rosparam file="$(find turtlebot3_rviz_navigation)/launch/params/global_costmap_params.yaml" command="load"/> 
+    <rosparam file="$(find turtlebot3_rviz_navigation)/launch/params/base_local_planner_params.yaml" command="load"/> 
+    <!--<rosparam file="$(find turtlebot3_rviz_navigation)/launch/params/dwa_local_planner_params.yaml" command="load"/>-->
+  <!-- CHECK IF NEEDED -->
+    <!--<param name="global_costmap/global_frame" value="/odom"/>-->
+    <rosparam file="$(find turtlebot3_rviz_navigation)/launch/params/move_base_params.yaml" command="load"/>
+
+    <remap from="cmd_vel" to="$(arg cmd_vel_topic)"/>
+    <remap from="odom" to="$(arg odom_topic)"/>
+
+  <!-- Set Global Planner. move_base default: navfn/NavfnROS -->
+    <param name="base_global_planner" value="global_planner/GlobalPlanner"/>
+    <!-- To use A*-->
+    <!--<param name="GlobalPlanner/use_dijkstra " value="false" /> 
+    
+     <param name="base_global_planner" value="a_star_ros/AStarRos"/> -->
+
+  <!-- Set Local Planner move_base default: base_local_planner/TrajectoryPlannerROS -->
+    <!--<param name="base_local_planner" value="dwa_local_planner/DWAPlannerROS" />-->
+    <!--<param name="base_local_planner" value="base_local_planner/TrajectoryPlannerROS" />--> 
+  </node>
+
+<!-- Launch RVIZ node with specified config file -->
+  <node name="rviz" pkg="rviz" type="rviz" args="-d $(find turtlebot3_rviz_navigation)/rviz/$(arg file_name).rviz"/>
+
+<!-- TO CHECK
+    <param name="controller_frequency" value="10.0"/>
+    <param name="controller_patiente" value="15.0"/>-->
+
+</launch>
