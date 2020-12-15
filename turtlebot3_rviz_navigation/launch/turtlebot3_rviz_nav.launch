@@ -2,56 +2,71 @@
 
 <launch>
 <!-- Here we specify arguments, useful when you want to "parametrize" launch file-->
-<!-- RVIZ config file name-->
+  <arg name="namespace_arg" value="tb3_1"/>
+  <!-- RVIZ config file name-->
   <arg name="file_name" default="navigation_single"/>
   
-<!-- Turtlebot3 model args and params setting -->
-  <arg name="move_forward_only" default="false"/>
+<!-- Load the static map in order to have information about static obstacles, for global planning -->
+  <include file="$(find turtlebot3_rviz_navigation)/launch/launch_map.launch"/>
+
+<!-- Define robot description without a robot-specific namespace since it can be used for other robots if they are all the same!-->
   <arg name="model" default="$(env TURTLEBOT3_MODEL)"/> <!--Always remember to "export TURTLEBOT3_MODEL=burger"-->
   <arg name="urdf_file" default="$(find xacro)/xacro --inorder '$(find turtlebot3_description)/urdf/turtlebot3_$(arg model).urdf.xacro'" />
   <param name="robot_description" command="$(arg urdf_file)" />
 
+<!-- Group for Robot 1 -->
+<group ns="$(arg namespace_arg)">
 <!-- Manually set the tf between /map and /odom-->
-  <node pkg="tf" type="static_transform_publisher" name="static_transform_publisher" args="2.0 7.0 0.0 0.0 0.0 0.0 map odom 100"/>
-<!-- Load the static map in order to have information about static obstacles at least for global navigation -->
-  <include file="$(find turtlebot3_rviz_navigation)/launch/launch_map.launch"/>
-
-<!-- Fake node, publishes tf and needed publishers (e.g. joint_state)-->
+  <node pkg="tf" type="static_transform_publisher" name="static_transform_publisher" args="2.0 7.0 0.0 0.0 0.0 0.0 /map $(arg namespace_arg)/odom 100"/>
+<!-- Turtlebot3 model args and params setting -->
+  <arg name="move_forward_only" default="false"/>
+  <param name="tb3_model" value="$(arg model)"/>
+  <!-- Fake node already publishes tf and needed publishers (e.g. joint_state)-->
   <!-- <node pkg="joint_state_publisher" type="joint_state_publisher" name="joint_state_publisher"/>-->
-    <param name="tb3_model" value="$(arg model)"/>
-    <node pkg="turtlebot3_fake" type="turtlebot3_fake_node" name="turtlebot3_fake_node" output="screen"/>
-  <!-- Publish robot state -->
-    <node pkg="robot_state_publisher" type="robot_state_publisher" name="robot_state_publisher">
-      <param name="publish_frequency" type="double" value="50.0" />
-    </node>
+
+  <!-- Since fake node takes these parameters and checks if parameters exist or not, set it here, to add namespace!-->
+  <param name="joint_states_frame" value="$(arg namespace_arg)/base_footprint" type="str"/>
+  <param name="odom_frame" value="$(arg namespace_arg)/odom" type="str"/>
+  <param name="base_frame" value="$(arg namespace_arg)/base_footprint" type="str"/>
+
+  <!-- Run turtlebot3 fake node-->
+  <node pkg="turtlebot3_fake" type="turtlebot3_fake_node" name="turtlebot3_fake_node" output="screen"/>
     
-<!-- A* is the default global planner in move_base?-->
+<!-- Publish robot state -->
+  <node pkg="robot_state_publisher" type="robot_state_publisher" name="robot_state_publisher">
+  <!-- defining ~tf_prefix automatically recognizes namespaces for tf to be published-->
+    <param name="~tf_prefix" value="$(arg namespace_arg)" type="str"/>
+    <!--<param name="publish_frequency" type="double" value="50.0" />-->
+  </node>
 
-<!-- Set topic names -->
-<arg name="cmd_vel_topic" default="/cmd_vel" />
-<arg name="odom_topic" default="odom" />
+<!-- Launch move_base node and remap/ set params for adding namespacing (or removing it, e.g. /map)-->
+  <node pkg="move_base" type="move_base" respawn="false" name="move_base" output="screen">
+      <param name="base_local_planner" value="dwa_local_planner/DWAPlannerROS" />
+      <param name="base_global_planner" value="global_planner/GlobalPlanner"/>
 
-<!-- Launch move_base node -->
-<node pkg="move_base" type="move_base" respawn="false" name="move_base" output="screen">
-    <param name="base_local_planner" value="dwa_local_planner/DWAPlannerROS" />
-    <param name="base_global_planner" value="global_planner/GlobalPlanner"/>
+      <rosparam file="$(find turtlebot3_navigation)/param/costmap_common_params_$(arg model).yaml" command="load" ns="global_costmap" />
+      <rosparam file="$(find turtlebot3_navigation)/param/costmap_common_params_$(arg model).yaml" command="load" ns="local_costmap" />
+      
+      <rosparam file="$(find turtlebot3_navigation)/param/local_costmap_params.yaml" command="load" />
+      <param name="local_costmap/global_frame" value="$(arg namespace_arg)/odom" />
+      <param name="local_costmap/robot_base_frame" value="$(arg namespace_arg)/base_footprint" />
 
-    <rosparam file="$(find turtlebot3_navigation)/param/costmap_common_params_$(arg model).yaml" command="load" ns="global_costmap" />
-    <rosparam file="$(find turtlebot3_navigation)/param/costmap_common_params_$(arg model).yaml" command="load" ns="local_costmap" />
-    <param name="local_costmap/global_frame" value="map" />
-    <rosparam file="$(find turtlebot3_navigation)/param/local_costmap_params.yaml" command="load" />
-    <rosparam file="$(find turtlebot3_navigation)/param/global_costmap_params.yaml" command="load" />
-    <rosparam file="$(find turtlebot3_navigation)/param/move_base_params.yaml" command="load" />
-    <rosparam file="$(find turtlebot3_navigation)/param/dwa_local_planner_params_$(arg model).yaml" command="load" />
-    <remap from="cmd_vel" to="$(arg cmd_vel_topic)"/>
-    <remap from="odom" to="$(arg odom_topic)"/>
-    <param name="DWAPlannerROS/min_vel_x" value="0.0" if="$(arg move_forward_only)" />
+      <rosparam file="$(find turtlebot3_navigation)/param/global_costmap_params.yaml" command="load" />
+      <param name="global_costmap/robot_base_frame" value="$(arg namespace_arg)/base_footprint" />
 
-    <param name="global_costmap/inflation_radius" value="0.5"/>
-</node>
+      <rosparam file="$(find turtlebot3_navigation)/param/move_base_params.yaml" command="load" />
+
+      <rosparam file="$(find turtlebot3_navigation)/param/dwa_local_planner_params_$(arg model).yaml" command="load" />
+
+      <remap from="map" to="/map"/>
+
+      <param name="DWAPlannerROS/min_vel_x" value="0.0" if="$(arg move_forward_only)" />
+      <param name="DWAPlannerROS/min_vel_x" value="0.0" if="$(arg move_forward_only)" />
+      <param name="global_costmap/inflation_radius" value="0.5"/>
+  </node>
+</group>
 
 <!-- Launch RVIZ node with specified config file -->
   <node name="rviz" pkg="rviz" type="rviz" args="-d $(find turtlebot3_rviz_navigation)/rviz/$(arg file_name).rviz"/>
-
-
+  
 </launch>

@@ -4,6 +4,5 @@
 <!-- Map server -->
     <arg name="map_file" default="$(find turtlebot3_rviz_navigation)/maps/lab10.yaml"/>
     <node name="map_server" pkg="map_server" type="map_server" args="$(arg map_file)" output="screen">
-        <!--<param name="map" value="/map" type="str"/>-->
     </node>
 </launch>
